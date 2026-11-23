@@ -103,6 +103,17 @@ def start(player):
         return {"sample": flag, "expires": expiry}
 
 
+@app.delete("/environments/<player>/<int:problem>")
+def stop(player, problem):
+    if not hmac.compare_digest(request.headers.get("Authorization", "").encode(), ("Bearer " + TOKEN).encode()):
+        abort(403)
+    with lock:
+        slot = slots.get(player)
+        if slot and slot[0] == problem:
+            remove(player)
+    return "", 204
+
+
 @app.get("/environments/<player>/site/<asset>")
 def site(player, asset):
     if not hmac.compare_digest(request.headers.get("Authorization", "").encode(), ("Bearer " + TOKEN).encode()):
