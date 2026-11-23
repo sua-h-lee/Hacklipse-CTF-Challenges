@@ -2,6 +2,7 @@
 import hmac
 import multiprocessing
 import os
+import subprocess
 import re
 import threading
 import time
@@ -32,7 +33,12 @@ def fixture_worker(channel, fixture):
 
 
 def remove(player):
-    _, proc, channel, _ = slots.pop(player)
+    n, proc, channel, _ = slots[player]
+    if n == 1:
+        subprocess.run(["docker","rm","-f","hkl-about-"+player], check=True, timeout=10, stdout=subprocess.DEVNULL)
+        del slots[player]
+        return
+    del slots[player]
     channel.close()
     proc.terminate()
     proc.join()
@@ -41,7 +47,7 @@ def remove(player):
 def reap():
     with lock:
         for player, (_, proc, _, expiry) in list(slots.items()):
-            if expiry <= time.time() or not proc.is_alive():
+            if expiry <= time.time() or (proc is not None and not proc.is_alive()):
                 remove(player)
 
 
@@ -68,6 +74,18 @@ def start(player):
         if player not in slots:
             if len(slots) >= 16:
                 abort(503)
+            if n == 1:
+                subprocess.run([
+                    "docker", "run", "-d", "--name", "hkl-about-"+player,
+                    "--label", "hkl.owner=about-pilot", "--network", "none",
+                    "--read-only", "--cap-drop", "ALL", "--security-opt", "no-new-privileges",
+                    "--memory", "20m", "--pids-limit", "12", "--cpus", "0.25",
+                    "hkl-about:pilot"
+                ], check=True, timeout=10, stdout=subprocess.DEVNULL)
+                slots[player] = (1, None, None, time.time()+1800)
+        if n == 1:
+            return {"web": True, "expires": slots[player][3]}
+        if player not in slots:
             parent, child = ctx.Pipe()
             proc = ctx.Process(target=fixture_worker, args=(child, ROOT / f"{n:02}" / "flag.txt"), daemon=True)
             proc.start()
@@ -85,7 +103,26 @@ def start(player):
         return {"sample": flag, "expires": expiry}
 
 
+@app.get("/environments/<player>/site/<asset>")
+def site(player, asset):
+    if not hmac.compare_digest(request.headers.get("Authorization", "").encode(), ("Bearer " + TOKEN).encode()):
+        abort(403)
+    if asset not in ("index.html", "style.css"):
+        abort(404)
+    with lock:
+        slot = slots.get(player)
+        if not slot or slot[0] != 1 or slot[3] <= time.time():
+            abort(410)
+        data = subprocess.check_output(["docker","exec","hkl-about-"+player,"/bin/busybox","wget","-qO-",
+                                        "http://127.0.0.1:8080/"+asset], timeout=3)
+        return data, 200, {"Content-Type": "text/css" if asset == "style.css" else "text/html; charset=utf-8"}
+
+
 if __name__ == "__main__":
+    # Memory-backed slots expire on service restart. Remove only this runner's containers.
+    previous = subprocess.check_output(["docker","ps","-aq","--filter","label=hkl.owner=about-pilot"], text=True).split()
+    if previous:
+        subprocess.run(["docker","rm","-f",*previous], check=True)
     from waitress import serve
     threading.Thread(target=sweep, daemon=True).start()
     serve(app, host="127.0.0.1", port=9011)
