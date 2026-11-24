@@ -19,7 +19,7 @@ member_app = Flask("member_gateway")
 member_app.config["MAX_CONTENT_LENGTH"] = 16384
 TOKEN = os.environ["CTF_RUNNER_TOKEN"]
 MEMBER_ORIGIN = os.getenv("CTF_MEMBER_ORIGIN", "").rstrip("/")
-FLAGS = {n: os.environ[f"CTF_FLAG_{n:02}"] for n in range(1, 16)}
+FLAGS = {n: os.environ[f"CTF_FLAG_{n:02}"] for n in range(1, 7)}
 for number, flag in FLAGS.items():
     if not re.fullmatch(r"HKL\{[^{}\r\n]+\}", flag):
         raise ValueError(f"CTF_FLAG_{number:02} must have the form HKL{{...}}")
@@ -76,7 +76,7 @@ def start(player):
         abort(400)
     data = request.get_json()
     n = data.get("problem") if isinstance(data, dict) else None
-    if type(n) is not int or not 1 <= n <= 15:
+    if type(n) is not int or not 1 <= n <= 6:
         abort(400)
     if n == 2 and not MEMBER_ORIGIN:
         abort(503, description="CTF_MEMBER_ORIGIN is required for problem 02")

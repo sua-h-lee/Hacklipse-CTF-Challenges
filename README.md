@@ -1,6 +1,6 @@
 # Hacklipse CTF 문제 출제
 
-challenges/01부터 challenges/15까지 문제별로 작업합니다. 플래그는 소스 파일이나 이미지에 저장하지 않고 실행 시 환경변수 `CTF_FLAG_01`부터 `CTF_FLAG_15`로 주입합니다. 각 값은 `HKL{...}` 형식이어야 합니다. 값이 없거나 형식이 잘못되면 러너가 시작되지 않습니다.
+challenges/01부터 challenges/08까지 문제별로 작업합니다. 01~06번은 인스턴스형 WEB 문제이며 실행 서버에 `CTF_FLAG_01`부터 `CTF_FLAG_06`을 주입합니다. 07~08번은 사진과 설명으로 제공하는 OSINT 문제이며 실행 서버 인스턴스가 없습니다. 8개 문제의 정답은 웹 플랫폼의 `CTF_FLAGS_JSON`에 설정합니다. 플래그를 소스 파일이나 참가자용 이미지에 저장하지 마세요. 실행 서버에 주입하는 값은 `HKL{...}` 형식이어야 합니다.
 
 이 저장소는 hkl-lab-pilot 배포용입니다. requirements.txt를 설치하고 `CTF_RUNNER_TOKEN`과 문제별 `CTF_FLAG_XX` 환경변수를 설정한 뒤 `python lab/runner.py`로 테스트 러너를 시작합니다. 02번 컨테이너는 `CTF_FLAG_02`를 전달받고, 03·04번 웹 문제를 독립 실행할 때는 각각 `CTF_FLAG_03`, `CTF_FLAG_04`를 전달합니다. 03·04번은 문제 풀이 경로를 유지하기 위해 시작 시 컨테이너 내부에 임시 `flag.txt`를 생성합니다.
 

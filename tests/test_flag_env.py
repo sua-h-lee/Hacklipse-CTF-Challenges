@@ -15,7 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 class FlagEnvironmentTests(unittest.TestCase):
     def test_runner_renders_first_flag_from_environment(self):
-        flags = {f"CTF_FLAG_{n:02}": f"HKL{{example_{n}}}" for n in range(1, 16)}
+        flags = {f"CTF_FLAG_{n:02}": f"HKL{{example_{n}}}" for n in range(1, 7)}
         flags["CTF_FLAG_01"] = "HKL{a&b}"
         with patch.dict(os.environ, {**flags, "CTF_RUNNER_TOKEN": "test-token", "CTF_MEMBER_ORIGIN": ""}):
             sys.path.insert(0, str(ROOT / "lab"))
@@ -38,6 +38,11 @@ class FlagEnvironmentTests(unittest.TestCase):
                     headers={"Authorization": "Bearer test-token"},
                 )
                 self.assertEqual(unavailable.status_code, 503)
+                osint = runner.app.test_client().put(
+                    f"/environments/{player}", json={"problem": 7},
+                    headers={"Authorization": "Bearer test-token"},
+                )
+                self.assertEqual(osint.status_code, 400)
             finally:
                 runner.slots.pop(player, None)
 
