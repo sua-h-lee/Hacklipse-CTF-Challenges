@@ -49,7 +49,7 @@ app.get('/login', async function(req, res) {
 });
 
 app.get('/', function(req, res) {
-    res.send('/login?uid=guest&upw=guest');
+    res.send('login?uid=guest&upw=guest');
 });
 
 async function start() {

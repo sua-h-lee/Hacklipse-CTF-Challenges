@@ -9,7 +9,7 @@
 {% endblock %}
 
 {% block content %}
-  <p class="important"><a href="/vuln?param=<script>alert(1)</script>">vuln(xss) page</a></p>
-  <p class="important"><a href="/memo?memo=hello">memo</a></p>
-  <p class="important"><a href="/flag">flag</a></p>
+  <p class="important"><a href="{{ url_for('vuln') }}?param=<script>alert(1)</script>">vuln(xss) page</a></p>
+  <p class="important"><a href="{{ url_for('memo') }}?memo=hello">memo</a></p>
+  <p class="important"><a href="{{ url_for('flag') }}">flag</a></p>
 {% endblock %}

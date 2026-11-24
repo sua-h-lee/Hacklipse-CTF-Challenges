@@ -13,11 +13,11 @@
     <nav class="navbar navbar-default navbar-fixed-top">
       <div class="container">
         <div class="navbar-header">
-          <a class="navbar-brand" href="/">SSRF</a>
+          <a class="navbar-brand" href="{{ url_for('index') }}">SSRF</a>
         </div>
         <div id="navbar">
           <ul class="nav navbar-nav">
-            <li><a href="/">Home</a></li>
+            <li><a href="{{ url_for('index') }}">Home</a></li>
             <li><a href="#about">About</a></li>
             <li><a href="#contact">Contact</a></li>
           </ul>

@@ -1,5 +1,6 @@
 #!/usr/bin/python3
 from flask import Flask, request, render_template
+from werkzeug.middleware.proxy_fix import ProxyFix
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
 from urllib.parse import quote
@@ -7,6 +8,7 @@ import os
 import re
 
 app = Flask(__name__)
+app.wsgi_app = ProxyFix(app.wsgi_app, x_prefix=1)
 app.secret_key = os.urandom(32)
 
 FLAG = os.environ["CTF_FLAG_06"]
