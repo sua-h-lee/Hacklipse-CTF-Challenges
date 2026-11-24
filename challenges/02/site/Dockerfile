@@ -1,5 +1,7 @@
 FROM php:8.3-apache
-RUN apt-get update && apt-get install -y --no-install-recommends libsqlite3-dev && docker-php-ext-install pdo_sqlite && rm -rf /var/lib/apt/lists/*
-COPY index.php .htaccess /var/www/html/
-RUN a2enmod rewrite && sed -ri '/Directory \/var\/www\/>/,/<\/Directory>/ s/AllowOverride None/AllowOverride All/' /etc/apache2/apache2.conf && mkdir -p /var/lib/member-app && chown www-data:www-data /var/lib/member-app
+COPY index.php /var/www/html/index.php
+COPY users.php posts.php /opt/member-app/
+COPY board.conf /etc/apache2/conf-enabled/member-board.conf
+RUN install -d -o www-data -g www-data -m 0700 /var/lib/member-app
 ENV APP_DB=/var/lib/member-app/users.sqlite3
+ENV APP_SEED=/opt/member-app/users.php
