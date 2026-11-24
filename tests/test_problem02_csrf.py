@@ -20,6 +20,30 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class ProblemTwoCsrfTests(unittest.TestCase):
+    def test_forms_submit_with_csrf_token(self):
+        with tempfile.TemporaryDirectory() as temp:
+            with patch.dict(os.environ, {
+                "CTF_FLAG_02": "HKL{csrf_test}",
+                "APP_DB": str(Path(temp) / "members.sqlite3"),
+            }):
+                spec = importlib.util.spec_from_file_location("problem02_forms_test", ROOT / "challenges/02/site/app.py")
+                module = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(module)
+                client = module.app.test_client()
+                form = client.get("/register")
+                self.assertIn(b'name="csrf"', form.data)
+                self.assertEqual(client.post("/register", data={
+                    "username": "learner", "password": "secret"
+                }).status_code, 403)
+                with client.session_transaction() as current:
+                    token = current["csrf"]
+                self.assertEqual(client.post("/register", data={
+                    "username": "learner", "password": "secret", "csrf": token
+                }).status_code, 303)
+                self.assertEqual(client.post("/", data={
+                    "username": "learner", "password": "secret", "csrf": token
+                }).status_code, 303)
+
     def test_forwarder_relays_form_and_session_cookie(self):
         local_app = Flask("forward_test")
 
@@ -97,9 +121,13 @@ class ProblemTwoCsrfTests(unittest.TestCase):
                 client = module.app.test_client()
                 with client.session_transaction() as login:
                     login["user"] = {"id": 3, "username": "young_wave"}
+                client.get("/board?id=3")
+                with client.session_transaction() as login:
+                    csrf_token = login["csrf"]
 
                 created = client.post("/board?id=3", data={
-                    "action": "create_post", "title": "CSRF", "content": '<img src="/admin" onerror="alert(1)">'
+                    "action": "create_post", "title": "CSRF", "content": '<img src="/admin" onerror="alert(1)">',
+                    "csrf": csrf_token,
                 })
                 self.assertEqual(created.status_code, 303)
                 board = client.get("/board?id=3")
@@ -113,7 +141,8 @@ class ProblemTwoCsrfTests(unittest.TestCase):
                     self.assertEqual(selected.data.count(b"<article>"), 1)
                     with patch.object(module, "visit_report") as visit:
                         reported = client.post("/report", data={
-                            "board_id": "3", "post_id": str(post_id), "admin_nickname": "eno"
+                            "board_id": "3", "post_id": str(post_id), "admin_nickname": "eno",
+                            "csrf": csrf_token,
                         })
                         module.reports.join()
                         visit.assert_called_once_with(3, post_id)

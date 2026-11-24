@@ -14,11 +14,12 @@ article p { white-space:pre-wrap; overflow-wrap:anywhere; }
 <h1>{{ heading }}</h1>
 {% if error %}<p role="alert">{{ error }}</p>{% endif %}
 {% if page == 'board' %}
-<form method="post"><p>{{ user.username }} · ID {{ user.id }}</p><button name="action" value="logout">로그아웃</button></form>
+<form method="post"><input type="hidden" name="csrf" value="{{ session.csrf }}"><p>{{ user.username }} · ID {{ user.id }}</p><button name="action" value="logout">로그아웃</button></form>
 <h2>{{ owner }}의 게시판</h2>
 <p><a href="{{ url_for('report', id=user.id) }}">게시글 신고</a></p>
 {% if owner_id == user.id %}
 <form method="post">
+<input type="hidden" name="csrf" value="{{ session.csrf }}">
 <label>제목<input name="title" maxlength="200" required></label>
 <label>내용<textarea name="content" maxlength="10000" rows="5" required></textarea></label>
 <button name="action" value="create_post">게시글 등록</button>
@@ -33,6 +34,7 @@ article p { white-space:pre-wrap; overflow-wrap:anywhere; }
 {% else %}<p>게시글이 없습니다.</p>{% endfor %}
 {% elif page == 'report' %}
 <form method="post" action="{{ url_for('report') }}">
+<input type="hidden" name="csrf" value="{{ session.csrf }}">
 <input type="hidden" name="board_id" value="{{ board_id if board_id is not none else '' }}">
 <label>관리자 닉네임<input name="admin_nickname" maxlength="64" required></label>
 <label>게시글 ID<input type="number" name="post_id" min="1000" max="9999" required></label>
@@ -42,6 +44,7 @@ article p { white-space:pre-wrap; overflow-wrap:anywhere; }
 <p><a href="{{ url_for('board', id=user.id) }}">내 게시판</a></p>
 {% else %}
 <form method="post">
+<input type="hidden" name="csrf" value="{{ session.csrf }}">
 <label>아이디<input name="username" autocomplete="username" maxlength="64" required></label>
 <label>비밀번호<input type="password" name="password" autocomplete="{{ 'new-password' if page == 'register' else 'current-password' }}" required></label>
 <button>{{ heading }}</button>

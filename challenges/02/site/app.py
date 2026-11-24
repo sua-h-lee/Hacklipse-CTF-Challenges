@@ -1,3 +1,4 @@
+import hmac
 import json
 import os
 import queue
@@ -20,6 +21,7 @@ if not re.fullmatch(r"HKL\{[^{}\r\n]+\}", FLAG):
 app = Flask(__name__, template_folder=str(ROOT))
 app.config.update(
     SECRET_KEY=os.getenv("APP_SECRET") or secrets.token_hex(32),
+    SESSION_COOKIE_SAMESITE="Lax",
     SESSION_COOKIE_SECURE=os.getenv("APP_HTTPS") == "1",
     MAX_CONTENT_LENGTH=65536,
 )
@@ -50,6 +52,16 @@ def close_database(error):
     db = g.pop("db", None)
     if db is not None:
         db.close()
+
+
+@app.before_request
+def csrf():
+    if "csrf" not in session:
+        session["csrf"] = secrets.token_hex(32)
+    if request.method == "POST" and not hmac.compare_digest(
+        request.form.get("csrf", "").encode(), session["csrf"].encode()
+    ):
+        abort(403)
 
 
 @app.after_request
