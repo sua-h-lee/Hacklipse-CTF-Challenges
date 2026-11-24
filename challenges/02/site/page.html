@@ -7,7 +7,7 @@
 <style>
 body { max-width:36rem; margin:3rem auto; padding:0 1rem; font:1rem system-ui,sans-serif; }
 label { display:block; margin-bottom:1rem; }
-input:not([type=hidden]), textarea, iframe { display:block; width:100%; box-sizing:border-box; padding:.5rem; }
+input:not([type=hidden]), textarea { display:block; width:100%; box-sizing:border-box; padding:.5rem; }
 article p { white-space:pre-wrap; overflow-wrap:anywhere; }
 </style>
 <main>
@@ -16,6 +16,7 @@ article p { white-space:pre-wrap; overflow-wrap:anywhere; }
 {% if page == 'board' %}
 <form method="post"><p>{{ user.username }} · ID {{ user.id }}</p><button name="action" value="logout">로그아웃</button></form>
 <h2>{{ owner }}의 게시판</h2>
+<p><a href="{{ url_for('report', id=user.id) }}">게시글 신고</a></p>
 {% if owner_id == user.id %}
 <form method="post">
 <label>제목<input name="title" maxlength="200" required></label>
@@ -26,8 +27,8 @@ article p { white-space:pre-wrap; overflow-wrap:anywhere; }
 {% for post in posts %}
 <article>
   <small>#{{ post.post_id }}</small>
-  <h3>{{ post.title | safe }}</h3>
-  <div>{{ post.content | safe }}</div>
+  <h3>{{ post.title }}</h3>
+  <div>{{ post.content | post_content }}</div>
 </article>
 {% else %}<p>게시글이 없습니다.</p>{% endfor %}
 {% elif page == 'report' %}
@@ -37,7 +38,7 @@ article p { white-space:pre-wrap; overflow-wrap:anywhere; }
 <label>게시글 ID<input type="number" name="post_id" min="1000" max="9999" required></label>
 <button>제출</button>
 </form>
-{% if preview %}<iframe sandbox referrerpolicy="no-referrer" title="신고 게시글 미리보기" srcdoc="{{ preview }}"></iframe>{% endif %}
+{% if submitted %}<p>신고가 접수되었습니다.</p>{% endif %}
 <p><a href="{{ url_for('board', id=user.id) }}">내 게시판</a></p>
 {% else %}
 <form method="post">

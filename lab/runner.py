@@ -1,4 +1,5 @@
-"""Pilot runner for trusted static fixtures. Each active slot owns one process."""
+"""Pilot runner for trusted challenge fixtures. Each active slot owns one process."""
+import html
 import hmac
 import secrets
 import multiprocessing
@@ -7,7 +8,6 @@ import subprocess
 import re
 import threading
 import time
-from pathlib import Path
 
 from flask import Flask, abort, request
 
@@ -17,19 +17,21 @@ app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = 2048
 member_app = Flask("member_gateway")
 member_app.config["MAX_CONTENT_LENGTH"] = 16384
-ROOT = Path(__file__).resolve().parent.parent / "challenges"
 TOKEN = os.environ["CTF_RUNNER_TOKEN"]
 MEMBER_ORIGIN = os.getenv("CTF_MEMBER_ORIGIN", "").rstrip("/")
+FLAGS = {n: os.environ[f"CTF_FLAG_{n:02}"] for n in range(1, 16)}
+for number, flag in FLAGS.items():
+    if not re.fullmatch(r"HKL\{[^{}\r\n]+\}", flag):
+        raise ValueError(f"CTF_FLAG_{number:02} must have the form HKL{{...}}")
 members = {}
 slots = {}
 lock = threading.Lock()
 ctx = multiprocessing.get_context("spawn")
 
 
-def fixture_worker(channel, fixture):
-    # Keep the selected fixture isolated from the other fixture processes.
+def fixture_worker(channel, flag):
+    # Keep the selected flag isolated from the other fixture processes.
     try:
-        flag = fixture.read_text().strip()
         while channel.poll(1800):
             channel.recv()
             channel.send(flag)
@@ -76,6 +78,8 @@ def start(player):
     n = data.get("problem") if isinstance(data, dict) else None
     if type(n) is not int or not 1 <= n <= 15:
         abort(400)
+    if n == 2 and not MEMBER_ORIGIN:
+        abort(503, description="CTF_MEMBER_ORIGIN is required for problem 02")
     reap()
     with lock:
         if player in slots and slots[player][0] != n:
@@ -87,9 +91,11 @@ def start(player):
                 subprocess.run([
                     "docker", "run", "-d", "--name", "hkl-member-" + player,
                     "--label", "hkl.owner=about-pilot", "--network", "none",
-                    "--read-only", "--tmpfs", "/tmp:rw,noexec,nosuid,nodev,size=16m,mode=1777",
+                    "--read-only", "--tmpfs", "/tmp:rw,exec,nosuid,nodev,size=128m,mode=1777",
                     "--cap-drop", "ALL", "--security-opt", "no-new-privileges",
-                    "--memory", "48m", "--pids-limit", "16", "--cpus", "0.25",
+                    "--memory", "512m", "--pids-limit", "128", "--cpus", "1",
+                    "--shm-size", "128m",
+                    "-e", "CTF_FLAG_02",
                     "hkl-member:pilot",
                 ], check=True, timeout=10, stdout=subprocess.DEVNULL)
                 members[player] = secrets.token_urlsafe(32)
@@ -109,7 +115,7 @@ def start(player):
             return {"web": True, "expires": slots[player][3]}
         if player not in slots:
             parent, child = ctx.Pipe()
-            proc = ctx.Process(target=fixture_worker, args=(child, ROOT / f"{n:02}" / "flag.txt"), daemon=True)
+            proc = ctx.Process(target=fixture_worker, args=(child, FLAGS[n]), daemon=True)
             proc.start()
             child.close()
             slots[player] = (n, proc, parent, time.time() + 1800)
@@ -162,6 +168,8 @@ def site(player, asset):
             abort(410)
         data = subprocess.check_output(["docker","exec","hkl-about-"+player,"/bin/busybox","wget","-qO-",
                                         "http://127.0.0.1:8080/"+asset], timeout=3)
+        if asset == "index.html":
+            data = data.replace(b"{{CTF_FLAG_01}}", html.escape(FLAGS[1]).encode())
         return data, 200, {"Content-Type": "text/css" if asset == "style.css" else "text/html; charset=utf-8"}
 
 

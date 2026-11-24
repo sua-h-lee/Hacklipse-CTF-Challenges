@@ -1,21 +1,35 @@
 import json
 import os
+import queue
 import re
 import secrets
 import sqlite3
+import threading
 from pathlib import Path
 
 import bcrypt
+import bleach
 from flask import Flask, abort, g, redirect, render_template, request, session, url_for
+from markupsafe import Markup
 
 ROOT = Path(__file__).resolve().parent
 SEED = json.loads((ROOT / "seed.json").read_text(encoding="utf-8"))
+FLAG = os.environ["CTF_FLAG_02"]
+if not re.fullmatch(r"HKL\{[^{}\r\n]+\}", FLAG):
+    raise ValueError("CTF_FLAG_02 must have the form HKL{...}")
 app = Flask(__name__, template_folder=str(ROOT))
 app.config.update(
     SECRET_KEY=os.getenv("APP_SECRET") or secrets.token_hex(32),
     SESSION_COOKIE_SECURE=os.getenv("APP_HTTPS") == "1",
     MAX_CONTENT_LENGTH=65536,
 )
+reports = queue.Queue(maxsize=8)
+
+
+@app.template_filter("post_content")
+def post_content(value):
+    return Markup(bleach.clean(value, tags=["img"], attributes={"img": ["src"]},
+                               protocols=["http", "https"], strip=True))
 
 
 def database():
@@ -41,6 +55,10 @@ def close_database(error):
 @app.after_request
 def prevent_caching(response):
     response.headers["Cache-Control"] = "no-store"
+    response.headers["Content-Security-Policy"] = (
+        "default-src 'none'; style-src 'unsafe-inline'; img-src 'self'; "
+        "form-action 'self'; base-uri 'none'; frame-ancestors 'none'"
+    )
     return response
 
 
@@ -124,7 +142,11 @@ def board():
             error = "게시글 ID를 부여하지 못했습니다."
         else:
             error = "제목과 내용을 확인해 주세요."
-    posts = db.execute(f"SELECT * FROM {table} ORDER BY post_id").fetchall()
+    selected_post = request.args.get("post_id", type=int)
+    if selected_post is None:
+        posts = db.execute(f"SELECT * FROM {table} ORDER BY post_id").fetchall()
+    else:
+        posts = db.execute(f"SELECT * FROM {table} WHERE post_id = ?", (selected_post,)).fetchall()
     return render_template("page.html", page="board", user=user, owner_id=owner_id,
                            owner=owner["username"], posts=posts, error=error)
 
@@ -139,9 +161,47 @@ def admin():
         db.execute(
             f"INSERT INTO {table} (post_id, title, content) VALUES (?, ?, ?) "
             "ON CONFLICT(post_id) DO NOTHING",
-            (9998, "테스트 플래그", "HKL{testflag2}"),
+            (9998, "테스트 플래그", FLAG),
         )
     return "hello world", 200, {"Content-Type": "text/plain; charset=utf-8"}
+
+
+def visit_report(board_id, post_id):
+    """Render the reported board in a browser whose requests originate locally."""
+    from selenium import webdriver
+    from selenium.webdriver.chrome.service import Service
+    from selenium.webdriver.support.ui import WebDriverWait
+
+    options = webdriver.ChromeOptions()
+    options.binary_location = "/usr/bin/chromium"
+    for argument in ("--headless=new", "--no-sandbox", "--disable-dev-shm-usage",
+                     "--disable-gpu", "--disable-background-networking", "--no-proxy-server"):
+        options.add_argument(argument)
+    driver = webdriver.Chrome(service=Service("/usr/bin/chromedriver"), options=options)
+    try:
+        driver.set_page_load_timeout(10)
+        driver.get("http://127.0.0.1/")
+        signed_session = app.session_interface.get_signing_serializer(app).dumps({
+            "user": {"id": 2, "username": "eno"}
+        })
+        driver.add_cookie({"name": app.config["SESSION_COOKIE_NAME"],
+                           "value": signed_session, "path": "/"})
+        driver.get(f"http://127.0.0.1/board?id={board_id}&post_id={post_id}")
+        WebDriverWait(driver, 8).until(lambda browser: browser.execute_script(
+            "return [...document.images].every(image => image.complete)"))
+    finally:
+        driver.quit()
+
+
+def report_worker():
+    while True:
+        board_id, post_id = reports.get()
+        try:
+            visit_report(board_id, post_id)
+        except Exception:
+            app.logger.exception("Failed to visit reported post %s/%s", board_id, post_id)
+        finally:
+            reports.task_done()
 
 
 @app.route("/report", methods=["GET", "POST"])
@@ -150,14 +210,14 @@ def report():
     if not user:
         return redirect("/?page=login", 303)
     board_id = request.args.get("id", user["id"], type=int)
-    preview = None
+    submitted = False
     error, status = "", 200
     if request.method == "POST":
         board_id = request.form.get("board_id", type=int)
         post_id = request.form.get("post_id", type=int)
         if request.form.get("admin_nickname", "").strip() != "eno":
             error, status = "관리자 닉네임이 올바르지 않습니다.", 400
-        elif not board_id or not 1 <= board_id <= 2**63 - 1 or not post_id or not 1000 <= post_id <= 9999:
+        elif board_id != user["id"] or not post_id or not 1000 <= post_id <= 9999:
             error, status = "게시판과 게시글 ID를 확인해 주세요.", 400
         else:
             db = database()
@@ -167,13 +227,15 @@ def report():
                 table = board_table(db, board_id)
                 post = db.execute(f"SELECT title, content FROM {table} WHERE post_id = ?", (post_id,)).fetchone()
             if post:
-                preview = (
-                    '<!doctype html><html lang="ko"><meta charset="utf-8">'
-                    '<meta http-equiv="Content-Security-Policy" content="default-src &apos;none&apos;; img-src http: https: data:">'
-                    f"<title>신고 게시글</title><h1>{post['title']}</h1>"
-                    f"<div>{post['content']}</div></html>"
-                )
+                try:
+                    reports.put_nowait((board_id, post_id))
+                    submitted = True
+                except queue.Full:
+                    error, status = "신고가 많아 잠시 후 다시 시도해 주세요.", 503
             else:
                 error, status = "신고할 게시글을 찾을 수 없습니다.", 404
     return render_template("page.html", page="report", user=user, board_id=board_id,
-                           preview=preview, error=error), status
+                           submitted=submitted, error=error), status
+
+
+threading.Thread(target=report_worker, daemon=True).start()

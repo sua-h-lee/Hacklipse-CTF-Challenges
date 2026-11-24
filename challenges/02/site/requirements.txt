@@ -1,3 +1,5 @@
 Flask>=3.1,<4
 bcrypt>=4,<6
+bleach>=6,<7
+selenium>=4.30,<5
 waitress>=3,<4
