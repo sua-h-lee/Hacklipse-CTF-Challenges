@@ -1,3 +1,4 @@
+import hmac
 import json
 import os
 import re
@@ -7,12 +8,21 @@ from pathlib import Path
 
 import bcrypt
 from flask import Flask, abort, g, redirect, render_template, request, session, url_for
+from markupsafe import escape
+
+from selenium import webdriver
+from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.common.by import By
+
 
 ROOT = Path(__file__).resolve().parent
 SEED = json.loads((ROOT / "seed.json").read_text(encoding="utf-8"))
 app = Flask(__name__, template_folder=str(ROOT))
 app.config.update(
     SECRET_KEY=os.getenv("APP_SECRET") or secrets.token_hex(32),
+    SESSION_COOKIE_SAMESITE="Lax",
     SESSION_COOKIE_SECURE=os.getenv("APP_HTTPS") == "1",
     MAX_CONTENT_LENGTH=65536,
 )
@@ -36,6 +46,16 @@ def close_database(error):
     db = g.pop("db", None)
     if db is not None:
         db.close()
+
+
+@app.before_request
+def csrf():
+    if "csrf" not in session:
+        session["csrf"] = secrets.token_hex(32)
+    if request.method == "POST" and not hmac.compare_digest(
+        request.form.get("csrf", "").encode(), session["csrf"].encode()
+    ):
+        abort(403)
 
 
 @app.after_request
@@ -133,15 +153,42 @@ def board():
 def admin():
     if request.remote_addr not in {"127.0.0.1", "::1"}:
         return "You do not have permission to access this page.", 403, {"Content-Type": "text/plain; charset=utf-8"}
-    db = database()
-    table = board_table(db, 2)
-    with db:
-        db.execute(
-            f"INSERT INTO {table} (post_id, title, content) VALUES (?, ?, ?) "
-            "ON CONFLICT(post_id) DO NOTHING",
-            (9998, "테스트 플래그", "HKL{testflag2}"),
-        )
     return "hello world", 200, {"Content-Type": "text/plain; charset=utf-8"}
+
+
+def read_url(url, cookie={"name": "name", "value": "value"}):
+    cookie.update({"domain": "127.0.0.1"})  # localhost 접속 시에만 쿠키를 붙인다
+    try:
+        service = Service(executable_path="/usr/local/bin/chromedriver")
+        options = webdriver.ChromeOptions()
+        for arg in [
+            "headless",
+            "window-size=1920x1080",
+            "disable-gpu",
+            "no-sandbox",
+            "disable-dev-shm-usage",
+        ]:
+            options.add_argument(arg)
+
+        driver = webdriver.Chrome(service=service, options=options)
+        driver.implicitly_wait(3)
+        driver.set_page_load_timeout(3)
+        driver.get("http://127.0.0.1:8000/")
+        driver.add_cookie(cookie)
+        driver.get(url)
+    except Exception as e:
+        print(str(e))
+        driver.quit()
+        # return str(e)
+        return False
+    driver.quit()
+    return True
+
+
+def check_csrf(param, cookie={"name": "name", "value": "value"}):
+    url = f"http://127.0.0.1:8000/vuln?param={urllib.parse.quote(param)}"
+    return read_url(url, cookie)    # 음?
+
 
 
 @app.route("/report", methods=["GET", "POST"])
@@ -169,9 +216,9 @@ def report():
             if post:
                 preview = (
                     '<!doctype html><html lang="ko"><meta charset="utf-8">'
-                    '<meta http-equiv="Content-Security-Policy" content="default-src &apos;none&apos;; img-src http: https: data:">'
-                    f"<title>신고 게시글</title><h1>{post['title']}</h1>"
-                    f"<div>{post['content']}</div></html>"
+                    '<meta http-equiv="Content-Security-Policy" content="default-src &apos;none&apos;">'
+                    f"<title>신고 게시글</title><h1>{escape(post['title'])}</h1>"
+                    f"<pre>{escape(post['content'])}</pre></html>"
                 )
             else:
                 error, status = "신고할 게시글을 찾을 수 없습니다.", 404
