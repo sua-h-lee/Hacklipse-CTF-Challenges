@@ -1,7 +1,8 @@
-FROM php:8.3-apache
-COPY index.php /var/www/html/index.php
-COPY users.php posts.php /opt/member-app/
-COPY board.conf /etc/apache2/conf-enabled/member-board.conf
-RUN install -d -o www-data -g www-data -m 0700 /var/lib/member-app
+FROM python:3.12-slim
+WORKDIR /app
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt && install -d -o 10001 -g 10001 -m 0700 /var/lib/member-app
+COPY app.py seed.json page.html ./
+USER 10001:10001
 ENV APP_DB=/var/lib/member-app/users.sqlite3
-ENV APP_SEED=/opt/member-app/users.php
+CMD ["waitress-serve", "--listen=0.0.0.0:80", "app:app"]
