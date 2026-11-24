@@ -1,0 +1,31 @@
+services:
+  db:
+    image: mysql:8.4
+    environment:
+      MYSQL_RANDOM_ROOT_PASSWORD: "yes"
+      MYSQL_DATABASE: main
+      MYSQL_USER: challenge
+      MYSQL_PASSWORD: challengepass
+    volumes:
+      - ./init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "MYSQL_PWD=$$MYSQL_PASSWORD mysql -h 127.0.0.1 -u challenge main -e 'SELECT 1' >/dev/null 2>&1"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 30s
+
+  web:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      DB_HOST: db
+      DB_PORT: "3306"
+      DB_USER: challenge
+      DB_PASSWORD: challengepass
+      DB_NAME: main
+      CTF_FLAG_05: ${CTF_FLAG_05:?CTF_FLAG_05 must be set to an HKL flag}
+    depends_on:
+      db:
+        condition: service_healthy
