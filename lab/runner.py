@@ -1,5 +1,6 @@
 """Pilot runner for trusted static fixtures. Each active slot owns one process."""
 import hmac
+import secrets
 import multiprocessing
 import os
 import subprocess
@@ -10,10 +11,16 @@ from pathlib import Path
 
 from flask import Flask, abort, request
 
+from member_gateway import serve_member
+
 app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = 2048
+member_app = Flask("member_gateway")
+member_app.config["MAX_CONTENT_LENGTH"] = 16384
 ROOT = Path(__file__).resolve().parent.parent / "challenges"
 TOKEN = os.environ["CTF_RUNNER_TOKEN"]
+MEMBER_ORIGIN = os.getenv("CTF_MEMBER_ORIGIN", "").rstrip("/")
+members = {}
 slots = {}
 lock = threading.Lock()
 ctx = multiprocessing.get_context("spawn")
@@ -34,9 +41,11 @@ def fixture_worker(channel, fixture):
 
 def remove(player):
     n, proc, channel, _ = slots[player]
-    if n == 1:
-        subprocess.run(["docker","rm","-f","hkl-about-"+player], check=True, timeout=10, stdout=subprocess.DEVNULL)
+    if proc is None:
+        name = "hkl-about-" + player if n == 1 else "hkl-member-" + player
+        subprocess.run(["docker","rm","-f",name], check=True, timeout=10, stdout=subprocess.DEVNULL)
         del slots[player]
+        members.pop(player, None)
         return
     del slots[player]
     channel.close()
@@ -74,6 +83,17 @@ def start(player):
         if player not in slots:
             if len(slots) >= 16:
                 abort(503)
+            if n == 2 and MEMBER_ORIGIN:
+                subprocess.run([
+                    "docker", "run", "-d", "--name", "hkl-member-" + player,
+                    "--label", "hkl.owner=about-pilot", "--network", "none",
+                    "--read-only", "--tmpfs", "/tmp:rw,noexec,nosuid,nodev,size=16m,mode=1777",
+                    "--cap-drop", "ALL", "--security-opt", "no-new-privileges",
+                    "--memory", "48m", "--pids-limit", "16", "--cpus", "0.25",
+                    "hkl-member:pilot",
+                ], check=True, timeout=10, stdout=subprocess.DEVNULL)
+                members[player] = secrets.token_urlsafe(32)
+                slots[player] = (2, None, None, time.time() + 1800)
             if n == 1:
                 subprocess.run([
                     "docker", "run", "-d", "--name", "hkl-about-"+player,
@@ -83,6 +103,8 @@ def start(player):
                     "hkl-about:pilot"
                 ], check=True, timeout=10, stdout=subprocess.DEVNULL)
                 slots[player] = (1, None, None, time.time()+1800)
+        if n == 2 and MEMBER_ORIGIN:
+            return {"url": f"{MEMBER_ORIGIN}/member/{members[player]}/", "expires": slots[player][3]}
         if n == 1:
             return {"web": True, "expires": slots[player][3]}
         if player not in slots:
@@ -101,6 +123,20 @@ def start(player):
             remove(player)
             abort(503)
         return {"sample": flag, "expires": expiry}
+
+
+@member_app.route("/member/<ticket>/", defaults={"path": ""}, methods=["GET", "POST"])
+@member_app.route("/member/<ticket>/<path>", methods=["GET", "POST"])
+def member(ticket, path):
+    if not MEMBER_ORIGIN or request.host != MEMBER_ORIGIN.split("://", 1)[-1]:
+        abort(404)
+    if not re.fullmatch(r"[a-zA-Z0-9_-]{43}", ticket):
+        abort(404)
+    with lock:
+        for player, value in members.items():
+            if secrets.compare_digest(value, ticket) and slots[player][3] > time.time():
+                return serve_member("hkl-member-" + player, f"/member/{ticket}/", path, MEMBER_ORIGIN)
+    abort(404)
 
 
 @app.delete("/environments/<player>/<int:problem>")
@@ -136,4 +172,11 @@ if __name__ == "__main__":
         subprocess.run(["docker","rm","-f",*previous], check=True)
     from waitress import serve
     threading.Thread(target=sweep, daemon=True).start()
+    if MEMBER_ORIGIN:
+        threading.Thread(
+            target=serve,
+            args=(member_app,),
+            kwargs={"host": "127.0.0.1", "port": 9012},
+            daemon=True,
+        ).start()
     serve(app, host="127.0.0.1", port=9011)

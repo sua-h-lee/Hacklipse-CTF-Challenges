@@ -1,0 +1,2 @@
+RewriteEngine On
+RewriteRule ^(info|report)/?$ index.php [L,QSA]

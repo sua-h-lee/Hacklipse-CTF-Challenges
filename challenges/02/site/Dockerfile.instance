@@ -1,0 +1,8 @@
+FROM php:8.3-cli
+RUN php -r 'exit(extension_loaded("pdo_sqlite") ? 0 : 1);'
+WORKDIR /app
+COPY index.php router.php forward.php /app/
+ENV APP_DB=/tmp/member-app/users.sqlite3
+USER 65534:65534
+EXPOSE 8080
+CMD ["php", "-d", "session.save_path=/tmp", "-S", "127.0.0.1:8080", "/app/router.php"]
