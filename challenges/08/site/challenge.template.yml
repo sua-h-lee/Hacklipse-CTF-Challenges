@@ -1,4 +1,4 @@
-# CTFd 호환 challenge.yml (ctfcli)
+# CTFd 등록용 템플릿. prepare.py로 challenge.yml을 생성합니다.
 name: "짭짤한 공기"
 author: ""
 category: OSINT
@@ -9,19 +9,14 @@ description: |
 
   ---
 
-  **Flag format:** `hacklipse{상호명}`
+  **Flag format:** `HKL{상호명}`
   - 상호명은 지도 앱(네이버 지도 / 카카오맵)에 등록된 정식 상호를 한글로, 띄어쓰기 없이 입력하세요.
-  - 예시 형식: `hacklipse{서울숲가든카페}` (실제 정답 아님)
+  - 예시 형식: `HKL{서울숲가든카페}` (실제 정답 아님)
 value: 100
 type: standard
 
 flags:
-  - hacklipse{비스타블루베이커리카페}
-  # 관대 채점용 추가 플래그 (원하면 주석 해제)
-  # - hacklipse{비스타블루 베이커리카페}
-  # - hacklipse{비스타블루 베이커리 카페}
-  # - hacklipse{비스타블루베이커리}
-  # - hacklipse{비스타블루}
+  - __CTF_FLAG_08__
 
 files:
   - dist/cafe.png

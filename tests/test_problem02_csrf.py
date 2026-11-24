@@ -166,6 +166,14 @@ class ProblemTwoCsrfTests(unittest.TestCase):
             spec = importlib.util.spec_from_file_location("problem02_bot_test", ROOT / "challenges/02/site/app.py")
             module = importlib.util.module_from_spec(spec)
             spec.loader.exec_module(module)
+            client = module.app.test_client()
+            login_url = f"/_bot/login?token={module.BOT_TOKEN}"
+            self.assertEqual(client.get(login_url, environ_overrides={
+                "REMOTE_ADDR": "203.0.113.10"
+            }).status_code, 403)
+            self.assertEqual(client.get(login_url).status_code, 200)
+            with client.session_transaction() as bot_session:
+                self.assertEqual(bot_session["user"]["username"], "eno")
             class Browser:
                 def __init__(self):
                     self.urls = []
@@ -184,8 +192,10 @@ class ProblemTwoCsrfTests(unittest.TestCase):
             browser = Browser()
             with patch("selenium.webdriver.Chrome", return_value=browser):
                 module.visit_report(3, 1234)
-            self.assertEqual(browser.urls, ["http://127.0.0.1/", "http://127.0.0.1/board?id=3&post_id=1234"])
-            self.assertEqual(browser.cookie["name"], "session")
+            self.assertEqual(browser.urls, [
+                f"http://127.0.0.1/_bot/login?token={module.BOT_TOKEN}",
+                "http://127.0.0.1/board?id=3&post_id=1234",
+            ])
             self.assertTrue(browser.closed)
 
 

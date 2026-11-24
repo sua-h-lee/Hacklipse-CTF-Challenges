@@ -2,36 +2,43 @@
 """출제 전 자동 검증. 사용법:  python3 -I verify.py"""
 import os, re, struct, subprocess, sys, zipfile
 
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(errors="backslashreplace")
+
 ROOT = os.path.dirname(os.path.abspath(__file__))
 P = lambda *a: os.path.join(ROOT, *a)
 
-STRICT_FLAG = "hacklipse{비스타블루베이커리카페}"
+STRICT_FLAG = os.environ["CTF_FLAG_08"]
+if not re.fullmatch(r"HKL\{[^{}\r\n]+\}", STRICT_FLAG):
+    raise ValueError("CTF_FLAG_08 must have the form HKL{...}")
+if STRICT_FLAG != "HKL{" + "비스타블루베이커리카페" + "}":
+    raise ValueError("CTF_FLAG_08 must encode the cafe name used by this challenge")
 LENIENT = [
-    r"(?i)^hacklipse\{\s*비스타[\s_-]*블루([\s_-]*베이커리)?([\s_-]*카페)?\s*\}$",
-    r"(?i)^hacklipse\{\s*vista[\s_-]*blue([\s_-]*bakery)?([\s_-]*cafe)?\s*\}$",
+    r"(?i)^HKL\{\s*비스타[\s_-]*블루([\s_-]*베이커리)?([\s_-]*카페)?\s*\}$",
+    r"(?i)^HKL\{\s*vista[\s_-]*blue([\s_-]*bakery)?([\s_-]*cafe)?\s*\}$",
 ]
 # 배포물 어디에도 있으면 안 되는 문자열 (정답 유출)
-LEAK = ["비스타", "vista", "blue", "snipaste", "screenshot", "solution", "hacklipse{"]
+LEAK = ["비스타", "vista", "blue", "snipaste", "screenshot", "solution", "hkl{"]
 
 ACCEPT = [  # 관대 채점 시 정답 처리되어야 하는 입력
-    "hacklipse{비스타블루베이커리카페}",
-    "hacklipse{비스타블루 베이커리카페}",
-    "hacklipse{비스타블루 베이커리 카페}",
-    "hacklipse{비스타 블루 베이커리 카페}",
-    "hacklipse{비스타블루베이커리}",
-    "hacklipse{비스타블루}",
-    "hacklipse{Vista Blue}",
-    "hacklipse{vista_blue_cafe}",
-    "hacklipse{VistaBlue Bakery Cafe}",
+    "HKL{비스타블루베이커리카페}",
+    "HKL{비스타블루 베이커리카페}",
+    "HKL{비스타블루 베이커리 카페}",
+    "HKL{비스타 블루 베이커리 카페}",
+    "HKL{비스타블루베이커리}",
+    "HKL{비스타블루}",
+    "HKL{Vista Blue}",
+    "HKL{vista_blue_cafe}",
+    "HKL{VistaBlue Bakery Cafe}",
 ]
 REJECT = [  # 오답으로 걸러져야 하는 입력
-    "hacklipse{비스타블루호텔}",
-    "hacklipse{바다정원}",
-    "hacklipse{비스타블루베이커리카페페}",
+    "HKL{비스타블루호텔}",
+    "HKL{바다정원}",
+    "HKL{비스타블루베이커리카페페}",
     "flag{비스타블루베이커리카페}",
     "비스타블루베이커리카페",
-    "hacklipse{}",
-    "hacklipse{블루비스타}",
+    "HKL{}",
+    "HKL{블루비스타}",
 ]
 
 ok = True
@@ -78,13 +85,14 @@ chk("베이커리카페}" not in desc, "예시 형식이 실제 접미사를 흘
 print("\n[6] challenge.yml 정합성")
 try:
     import yaml
-    y = yaml.safe_load(open(P("challenge.yml"), encoding="utf-8"))
+    config_path = os.getenv("CTF_CHALLENGE_YAML", P("challenge.yml"))
+    y = yaml.safe_load(open(config_path, encoding="utf-8"))
     chk(STRICT_FLAG in y.get("flags", []), "yaml의 flag == 정답")
     for f in y.get("files", []):
         chk(os.path.exists(P(f)), f"files 항목 실재: {f}")
     chk("비스타" not in y.get("description", ""), "yaml description에 정답 없음")
 except ImportError:
-    print("  [SKIP] pyyaml 미설치")
+    chk(False, "PyYAML 설치 필요")
 
 print("\n[7] 플래그 채점 로직 (관대 채점 정규식)")
 def grade(s):

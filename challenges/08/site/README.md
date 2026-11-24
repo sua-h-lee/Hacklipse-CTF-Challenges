@@ -5,16 +5,17 @@
 | 카테고리 | OSINT / GEOSINT |
 | 난이도 | 쉬움 (입문용) |
 | 배점 | 100 (권장) |
-| 플래그 | `hacklipse{비스타블루베이커리카페}` |
+| 플래그 | `CTF_FLAG_08` (`HKL{상호명}`) |
 | 배포 파일 | `dist/cafe.png` |
 
 ## 디렉터리
 
 ```
-geosint-salty-air/
+challenges/08/site/
 ├── README.md          # 이 파일 (출제자용)
 ├── description.md     # 플랫폼에 붙여넣을 문제 설명문
-├── challenge.yml      # CTFd(ctfcli) 등록용
+├── challenge.template.yml # Git에 보관하는 설정 템플릿
+├── prepare.py         # CTF_FLAG_08에서 challenge.yml 생성
 ├── solution.md        # 풀이 (배포 금지)
 ├── salty-air.zip      # ★ 업로드용 압축본 (cafe.png 1개만 포함)
 ├── dist/
@@ -56,7 +57,9 @@ cd dist && zip -X -9 ../salty-air.zip cafe.png
 ### 1단계 — 패키지 자동 검증 (즉시 가능)
 
 ```bash
-cd geosint-salty-air
+cd challenges/08/site
+export CTF_FLAG_08='HKL{비스타블루베이커리카페}'
+python3 prepare.py
 python3 -I verify.py
 ```
 
@@ -98,7 +101,7 @@ python3 -I verify.py
 docker run -d --name ctfd-test -p 8000:8000 ctfd/ctfd:latest
 # http://localhost:8000 → 초기 설정 → Admin → Challenges → New
 # 설명은 description.md 붙여넣기, 파일은 salty-air.zip 업로드,
-# flag는 hacklipse{비스타블루베이커리카페} (+ 관대 채점분 추가)
+# flag는 CTF_FLAG_08 환경변수 값 (+ 관대 채점분 추가)
 docker rm -f ctfd-test     # 테스트 끝나면 정리
 ```
 

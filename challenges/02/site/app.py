@@ -26,6 +26,7 @@ app.config.update(
     MAX_CONTENT_LENGTH=65536,
 )
 reports = queue.Queue(maxsize=8)
+BOT_TOKEN = secrets.token_urlsafe(32)
 
 
 @app.template_filter("post_content")
@@ -178,6 +179,17 @@ def admin():
     return "hello world", 200, {"Content-Type": "text/plain; charset=utf-8"}
 
 
+@app.get("/_bot/login")
+def bot_login():
+    if request.remote_addr not in {"127.0.0.1", "::1"} or not hmac.compare_digest(
+        request.args.get("token", ""), BOT_TOKEN
+    ):
+        abort(403)
+    session.clear()
+    session["user"] = {"id": 2, "username": "eno"}
+    return "ok"
+
+
 def visit_report(board_id, post_id):
     """Render the reported board in a browser whose requests originate locally."""
     from selenium import webdriver
@@ -192,13 +204,11 @@ def visit_report(board_id, post_id):
     driver = webdriver.Chrome(service=Service("/usr/bin/chromedriver"), options=options)
     try:
         driver.set_page_load_timeout(10)
-        driver.get("http://127.0.0.1/")
-        signed_session = app.session_interface.get_signing_serializer(app).dumps({
-            "user": {"id": 2, "username": "eno"}
-        })
-        driver.add_cookie({"name": app.config["SESSION_COOKIE_NAME"],
-                           "value": signed_session, "path": "/"})
+        driver.get(f"http://127.0.0.1/_bot/login?token={BOT_TOKEN}")
+        app.logger.warning("Bot login page: %s", driver.current_url.split("?", 1)[0])
         driver.get(f"http://127.0.0.1/board?id={board_id}&post_id={post_id}")
+        app.logger.warning("Bot board page: %s; images: %s", driver.current_url,
+                           driver.execute_script("return document.images.length"))
         WebDriverWait(driver, 8).until(lambda browser: browser.execute_script(
             "return [...document.images].every(image => image.complete)"))
     finally:
